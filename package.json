@@ -1,0 +1,17 @@
+{
+  "name": "automacao-n8n-agenda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automação n8n: pedidos de serviço pelo WhatsApp → Google Agenda → resposta no WhatsApp e lembretes por e-mail",
+  "author": "kauaxp77",
+  "scripts": {
+    "test": "node test/testar_validacao.js && node test/testar_lembretes.js && node test/testar_comandos.js && node test/testar_entrega.js",
+    "build": "node build.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "luxon": "^3.7.2"
+  }
+}

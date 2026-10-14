@@ -1,0 +1,974 @@
+{
+  "name": "Pedidos → Agenda",
+  "nodes": [
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "name": "WhatsApp: novo pedido",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -220
+      ],
+      "webhookId": "e4d1b3f5-8a2c-4f6e-b7d9-0c1e2f3a4b5c",
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {
+          "messageStatusUpdates": [
+            "failed"
+          ]
+        }
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "name": "Gmail: novo pedido",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "label:pedidos-licitacao"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "name": "Formulário: colar pedido",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        220
+      ],
+      "webhookId": "b1a7e0c2-5d1f-4c8e-9a3b-7f2d6e4c1a90",
+      "parameters": {
+        "authentication": "basicAuth",
+        "formTitle": "Novo pedido de serviço",
+        "formDescription": "Cole aqui o texto de um pedido. O robô agenda e avisa por e-mail. (O caminho normal é encaminhar o pedido ao WhatsApp do robô.)",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Texto do pedido",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Origem",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "WhatsApp"
+                  },
+                  {
+                    "option": "Telefone"
+                  },
+                  {
+                    "option": "Outro"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "name": "Normalizar entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ===== CONFIGURAÇÃO: edite aqui =====\nconst CONFIG = {\n  email_responsavel: 'COLOQUE_O_EMAIL_DO_RESPONSAVEL@gmail.com',\n  // Quem pode mandar pedidos ao robô pelo WhatsApp: DDI + DDD + número, só dígitos (ex.: '5511987654321').\n  // Mensagem de qualquer outro número é ignorada sem resposta.\n  whatsapp_autorizados: ['COLOQUE_O_NUMERO_DO_RESPONSAVEL'],\n  // Recebem o convite do evento e os lembretes por e-mail, além do responsável. Ex.: ['joao@empresa.com']\n  emails_equipe: [],\n  calendario_id: 'primary',       // ou o ID de um calendário dedicado\n  duracao_padrao_horas: 2,        // usada quando o pedido não diz a hora de término\n  fuso: 'America/Sao_Paulo',\n};\n// ====================================\n\n// Celular brasileiro antigo pode chegar do WhatsApp sem o 9 (\"551187654321\" em vez de \"5511987654321\").\n// Compara as duas formas para a lista de autorizados funcionar nos dois casos.\nconst formas = n => {\n  const d = String(n || '').replace(/\\D/g, '');\n  const f = new Set([d]);\n  if (/^55\\d{2}9\\d{8}$/.test(d)) f.add(d.slice(0, 4) + d.slice(5));\n  if (/^55\\d{2}\\d{8}$/.test(d)) f.add(d.slice(0, 4) + '9' + d.slice(4));\n  return f;\n};\nconst autorizado = numero => {\n  const de = formas(numero);\n  return CONFIG.whatsapp_autorizados.some(a => [...formas(a)].some(x => de.has(x)));\n};\n\n// Comandos do WhatsApp: valem só se a mensagem for SÓ a palavra (\"agenda\"), para que\n// \"agenda pra mim a sessão dia 20/11\" continue sendo um pedido. Botões do menu chegam pelo id.\nconst COMANDOS = {\n  agenda: ['agenda', 'ver agenda', 'minha agenda', 'eventos', 'proximos', 'proximos eventos', 'compromissos', 'lista'],\n  menu: ['menu', 'oi', 'ola', 'opcoes', 'inicio', 'bom dia', 'boa tarde', 'boa noite'],\n  ajuda: ['ajuda', 'como agendar', 'help'],\n};\nconst BOTOES = { ver_agenda: 'agenda', como_agendar: 'ajuda' };\nconst qualComando = t => {\n  const n = String(t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase()\n    .replace(/[^a-z0-9 ]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return Object.keys(COMANDOS).find(c => COMANDOS[c].includes(n)) || '';\n};\n\nconst j = $input.first().json;\nlet texto = '', origem, referencia, canal, responder_para = '', whatsapp_phone_number_id = '', encaminhada = false, erro = '', comando = '';\n\nif (j.messaging_product === 'whatsapp' || j.messages || j.statuses) {\n  // Veio do WhatsApp (nó \"WhatsApp Trigger\": um item por mensagem recebida)\n  const m = (j.messages || [])[0];\n  if (!m) {\n    // Aviso de status (o gatilho só repassa os de falha). A Meta aceita a resposta do robô e só\n    // depois avisa que não entregou: conta bloqueada, fora da janela de 24h... Sem este aviso,\n    // a falha passa calada, porque o nó de envio deu certo e o e-mail de reserva não dispara.\n    const falhas = $input.all().flatMap(i => i.json.statuses || []).filter(s => s.status === 'failed');\n    if (!falhas.length) return [];\n    return [{\n      json: {\n        ...CONFIG,\n        canal: 'whatsapp_status',\n        falhas_entrega: falhas.map(s => {\n          const e = (s.errors || [])[0] || {};\n          const quando = DateTime.fromSeconds(Number(s.timestamp) || 0);\n          return {\n            para: s.recipient_id || '',\n            mensagem_id: s.id || '',\n            quando_iso: (Number(s.timestamp) && quando.isValid ? quando : DateTime.now()).setZone(CONFIG.fuso).toISO(),\n            codigo: e.code || '',\n            titulo: e.title || e.message || '',\n            detalhe: (e.error_data && e.error_data.details) || e.message || '',\n          };\n        }),\n      },\n    }];\n  }\n  if (!autorizado(m.from)) return [];    // número fora da lista: ignora\n  const nome = ((j.contacts || [])[0] || {}).profile?.name;\n  canal = 'whatsapp';\n  responder_para = m.from;\n  // A resposta sai pelo mesmo número que recebeu a mensagem (o de teste da Meta ou o próprio)\n  whatsapp_phone_number_id = (j.metadata && j.metadata.phone_number_id) || '';\n  origem = 'WhatsApp' + (nome ? ' (' + nome + ')' : '');\n  encaminhada = !!(m.context && (m.context.forwarded || m.context.frequently_forwarded));\n  // Mensagem encaminhada não traz a data em que o cliente escreveu: a referência é o encaminhamento\n  const enviado = DateTime.fromSeconds(Number(m.timestamp) || 0);\n  referencia = (Number(m.timestamp) && enviado.isValid ? enviado : DateTime.now()).setZone(CONFIG.fuso);\n  if (m.type === 'text') {\n    texto = (m.text && m.text.body) || '';\n    comando = qualComando(texto);\n  } else if (m.type === 'interactive') {\n    // Clique num botão do menu\n    const r = (m.interactive && (m.interactive.button_reply || m.interactive.list_reply)) || {};\n    comando = BOTOES[r.id] || 'menu';\n    texto = r.title || '';\n  } else {\n    const tipos = { audio: 'um áudio', image: 'uma imagem', document: 'um arquivo', video: 'um vídeo', sticker: 'uma figurinha' };\n    erro = 'Recebi ' + (tipos[m.type] || 'uma mensagem que não é texto') +\n      ', mas por enquanto só leio mensagens de texto. Mande o pedido escrito (ou encaminhe a mensagem de texto do cliente).';\n  }\n  if (!erro && !texto.trim()) erro = 'A mensagem chegou vazia.';\n} else if (j['Texto do pedido']) {\n  // Veio do formulário (texto colado à mão)\n  texto = j['Texto do pedido'];\n  canal = 'formulario';\n  origem = 'Formulário (' + (j['Origem'] || 'colado') + ')';\n  referencia = DateTime.now().setZone(CONFIG.fuso);\n} else {\n  // Veio do Gmail\n  const corpo = j.text || j.textPlain || j.snippet || '';\n  texto = 'Assunto: ' + (j.subject || '') + '\\nDe: ' + ((j.from && j.from.text) || '') + '\\n\\n' + corpo;\n  canal = 'email';\n  origem = 'E-mail';\n  // Datas relativas (\"amanhã\", \"próxima terça\") contam a partir do ENVIO do e-mail, não de agora\n  const enviado = j.date ? DateTime.fromJSDate(new Date(j.date)) : null;\n  referencia = (enviado && enviado.isValid ? enviado : DateTime.now()).setZone(CONFIG.fuso);\n}\n\nreturn [{\n  json: {\n    ...CONFIG,\n    texto,\n    origem,\n    canal,             // whatsapp | email | formulario: define por onde vai a resposta\n    responder_para,    // número do WhatsApp de quem mandou o pedido\n    whatsapp_phone_number_id, // ID (na Meta) do número do robô que recebeu a mensagem\n    encaminhada,\n    erro,              // preenchido quando a mensagem não dá para ler (áudio, imagem...)\n    comando,           // agenda | menu | ajuda: responde sem passar pela IA. Vazio = pedido\n    referencia_iso: referencia.toISO(),\n    referencia_extenso: referencia.setLocale('pt-BR').toFormat(\"cccc, dd 'de' LLLL 'de' yyyy, HH:mm\"),\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "name": "Resposta não entregue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        460,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000006",
+              "leftValue": "={{ ($json.falhas_entrega || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000007",
+      "name": "Montar aviso de não entrega",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        380
+      ],
+      "parameters": {
+        "jsCode": "// E-mail para o responsável quando uma resposta do robô pelo WhatsApp NÃO foi entregue.\n// A Meta aceita o envio (o nó de envio dá certo) e só depois avisa a falha, num status do webhook.\n// Por isso o e-mail de reserva dos nós de envio não pega este caso.\nconst p = $input.first().json;\nconst falhas = p.falhas_entrega || [];\n\nconst esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n// Os códigos que já apareceram ou que são prováveis com um robô que só responde\nconst DICAS = {\n  131031: 'A Meta <b>bloqueou a conta</b> do WhatsApp Business. Nenhuma resposta vai chegar até a conta ser liberada: veja a Central de suporte para empresas da Meta.',\n  131047: 'Passaram <b>mais de 24 horas</b> desde a última mensagem dessa pessoa para o robô. Fora dessa janela, a Meta só aceita mensagens pagas com modelo aprovado.',\n  131026: 'O número não pôde receber: WhatsApp desatualizado, número sem WhatsApp ou que não aceitou os termos atuais.',\n  131030: 'O número não está na lista de destinatários permitidos do <b>número de teste</b> da Meta.',\n};\nconst numero = n => (String(n).startsWith('55') ? '+' : '') + n;\n\nconst itens = falhas.map(f => {\n  const quando = DateTime.fromISO(f.quando_iso).setZone(p.fuso).setLocale('pt-BR');\n  return '<li><b>Para:</b> ' + esc(numero(f.para)) +\n    '<br><b>Quando:</b> ' + esc(quando.toFormat(\"cccc, dd/MM 'às' HH:mm\")) +\n    '<br><b>Erro ' + esc(f.codigo) + ':</b> ' + esc(f.titulo) + (f.detalhe && f.detalhe !== f.titulo ? ' (' + esc(f.detalhe) + ')' : '') +\n    (DICAS[f.codigo] ? '<br>' + DICAS[f.codigo] : '') + '</li>';\n});\n\nreturn [{\n  json: {\n    assunto: '⚠️ Resposta do WhatsApp NÃO entregue' + (falhas.length > 1 ? ' (' + falhas.length + ')' : ''),\n    html:\n      '<p><b>O robô respondeu pelo WhatsApp, mas a Meta não entregou a mensagem.</b></p>' +\n      '<p>Quem mandou o pedido não recebeu a confirmação. O pedido pode ter entrado na agenda normalmente: ' +\n      '<a href=\"https://calendar.google.com\">confira a agenda</a> e avise a pessoa por outro meio, se precisar.</p>' +\n      '<ul>' + itens.join('') + '</ul>',\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000008",
+      "name": "E-mail: resposta não entregue",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        380
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Normalizar entrada').first().json.email_responsavel }}",
+        "subject": "={{ $json.assunto }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000009",
+      "name": "É comando?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000010",
+              "leftValue": "={{ $json.comando }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000011",
+      "name": "Pediu a agenda?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        -460
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000012",
+              "leftValue": "={{ $json.comando === 'agenda' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000013",
+      "name": "Ler próximos eventos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        -560
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ encodeURIComponent($('Normalizar entrada').first().json.calendario_id) }}/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeMin",
+              "value": "={{ $now.toUTC().toISO() }}"
+            },
+            {
+              "name": "timeMax",
+              "value": "={{ $now.plus({ days: 60 }).toUTC().toISO() }}"
+            },
+            {
+              "name": "singleEvents",
+              "value": "true"
+            },
+            {
+              "name": "orderBy",
+              "value": "startTime"
+            },
+            {
+              "name": "maxResults",
+              "value": "100"
+            },
+            {
+              "name": "privateExtendedProperty",
+              "value": "agenda_bot=1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000014",
+      "name": "Montar lista de eventos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -560
+      ],
+      "parameters": {
+        "jsCode": "// Resposta do comando \"agenda\" no WhatsApp: os serviços marcados nos próximos 60 dias.\n// Entrada: a resposta da API do Google Agenda (só eventos do robô), ou o erro dela.\nconst resp = $input.first().json;\nconst p = $('Normalizar entrada').first().json;\nconst agora = DateTime.now().setZone(p.fuso);\nconst LIMITE = 30; // a mensagem do WhatsApp tem limite de 4096 caracteres\n\nconst texto = body => ({ type: 'text', text: { preview_url: false, body } });\n\nif (resp.error || !Array.isArray(resp.items)) {\n  return [{ json: { mensagem: texto('⚠️ Não consegui ler a agenda agora. Tente de novo em alguns minutos.' +\n    (resp.error ? '\\n\\nErro: ' + JSON.stringify(resp.error).slice(0, 200) : '')) } }];\n}\nconst inicioDe = ev => ev.start.dateTime\n  ? DateTime.fromISO(ev.start.dateTime).setZone(p.fuso)\n  : DateTime.fromISO(ev.start.date, { zone: p.fuso });\n// O Google já devolve em ordem (orderBy=startTime); ordenar de novo custa nada e não depende disso\nconst eventos = resp.items.filter(ev => ev.status !== 'cancelled' && ev.start).sort((a, b) => inicioDe(a) - inicioDe(b));\nif (!eventos.length) {\n  return [{ json: { mensagem: texto('📅 Nenhum serviço marcado nos próximos 60 dias.') } }];\n}\n\nconst linhas = [];\nlet diaAnterior = '';\nlet temVerificar = false;\nfor (const ev of eventos.slice(0, LIMITE)) {\n  const diaInteiro = !ev.start.dateTime;\n  const inicio = inicioDe(ev);\n  const dias = Math.round(inicio.startOf('day').diff(agora.startOf('day'), 'days').days);\n  const semana = inicio.setLocale('pt-BR').toFormat('cccc, dd/MM');\n  const dia = (dias === 0 ? 'Hoje · ' : dias === 1 ? 'Amanhã · ' : '') + semana.charAt(0).toUpperCase() + semana.slice(1);\n  if (dia !== diaAnterior) {\n    linhas.push('', '*' + dia + '*');\n    diaAnterior = dia;\n  }\n  const titulo = String(ev.summary || '(sem título)');\n  const verificar = titulo.startsWith('⚠️');\n  temVerificar = temVerificar || verificar;\n  // Prefixos de status: ⏳ e ✅ vêm da versão com confirmação pelo Telegram (eventos antigos)\n  const limpo = titulo.replace(/^(⏳ \\[A CONFIRMAR\\] |✅ |⚠️ VERIFICAR: )/, '');\n  linhas.push((verificar ? '⚠️ ' : '• ') + (diaInteiro ? 'dia todo' : inicio.toFormat('HH:mm')) + ' — ' + limpo);\n}\n\nlet body = '📅 *Próximos serviços* (' + eventos.length + ')\\n' + linhas.join('\\n') +\n  (eventos.length > LIMITE ? '\\n\\n… e mais ' + (eventos.length - LIMITE) + '. Veja tudo na agenda.' : '') +\n  (temVerificar ? '\\n\\n⚠️ = marcado para VERIFICAR: confira a data no evento.' : '');\nif (body.length > 4000) body = body.slice(0, 3950) + '\\n[...]';\n\nreturn [{ json: { mensagem: texto(body) } }];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000015",
+      "name": "Montar menu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -360
+      ],
+      "parameters": {
+        "jsCode": "// Resposta dos comandos \"menu\" (com botões) e \"ajuda\" no WhatsApp.\n// Os botões chegam de volta como mensagem \"interactive\" com o id (ver 01_normalizar.js).\nconst p = $('Normalizar entrada').first().json;\n\nif (p.comando === 'ajuda') {\n  return [{ json: { mensagem: { type: 'text', text: { preview_url: false, body:\n    '➕ *Como agendar*\\n\\n' +\n    'Encaminhe para mim a mensagem do cliente (segure a mensagem → Encaminhar) ou escreva o pedido com a data e a hora. Exemplo:\\n\\n' +\n    '_Sessão do Pregão 45/2026 da Prefeitura de Campinas, dia 20/11 às 9h_\\n\\n' +\n    'Eu coloco na agenda e respondo aqui com o dia por extenso. Para ver o que está marcado, mande *agenda*.',\n  } } } }];\n}\n\nreturn [{ json: { mensagem: {\n  type: 'interactive',\n  interactive: {\n    type: 'button',\n    body: { text: 'Olá! Eu coloco os pedidos de serviço na agenda.\\n\\nEncaminhe a mensagem do cliente ou escreva o pedido com data e hora. Ou escolha:' },\n    action: {\n      buttons: [ // título: até 20 caracteres\n        { type: 'reply', reply: { id: 'ver_agenda', title: '📅 Ver agenda' } },\n        { type: 'reply', reply: { id: 'como_agendar', title: '➕ Como agendar' } },\n      ],\n    },\n  },\n} } }];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000016",
+      "name": "WhatsApp: responder comando",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        -460
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v23.0/{{ $('Normalizar entrada').first().json.whatsapp_phone_number_id }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $('Normalizar entrada').first().json.responder_para, ...$json.mensagem }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000017",
+      "name": "Dá para ler?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000018",
+              "leftValue": "={{ $json.erro }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000019",
+      "name": "Montar pedido para a IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\n\nconst SYSTEM = `Você extrai dados de pedidos de serviço recebidos por uma empresa que atua com licitações públicas (ex.: representar o cliente em sessão de pregão, entregar documentos/envelopes, fazer visita técnica, enviar proposta, protocolar recurso).\n\nLeia a mensagem e preencha o esquema. Regras:\n- Nunca invente. Campo sem informação = string vazia.\n- \"data\" no formato AAAA-MM-DD; horas em HH:MM (24h), horário de Brasília.\n- Datas no formato brasileiro: 05/11 é 5 de novembro. Nunca leia como mês/dia.\n- Datas relativas (\"amanhã\", \"sexta que vem\", \"daqui a 3 dias\") devem ser resolvidas a partir da DATA DE REFERÊNCIA informada, consultando o CALENDÁRIO fornecido. Marque data_relativa=true. Não liste isso em \"ambiguidades\" (o sistema já avisa); use \"ambiguidades\" só para dúvida real, como \"sexta\" sem dizer qual.\n- Data com dia e mês escritos (ex.: \"05/11\", \"5 de novembro\") NÃO é relativa, mesmo sem o ano: data_relativa=false. Se o ano não estiver escrito, use a próxima ocorrência a partir da data de referência. Ano omitido é normal: sozinho, não reduz a confiança e não vai em \"ambiguidades\".\n- \"trecho_da_data\": copie LITERALMENTE o trecho da mensagem de onde tirou a data e a hora.\n- \"dia_da_semana_citado\": se a mensagem escrever um dia da semana junto da data principal, copie-o (ex.: \"segunda-feira\"). Se não escrever, deixe vazio. Não calcule o dia da semana você mesmo.\n- Mensagens de licitação costumam ter várias datas (impugnação, abertura de propostas, sessão de disputa, entrega). A data principal é aquela em que a empresa precisa EXECUTAR o serviço pedido. Liste as demais em \"outras_datas\". Se não for possível saber qual é a principal, diga isso em \"ambiguidades\" e use confianca \"baixa\".\n- \"confianca\": \"alta\" somente se dia, mês e hora estão escritos explicitamente (o ano pode faltar) e não há conflito; \"media\" se algo foi deduzido; \"baixa\" se há dúvida real.\n- \"resumo\": título curto para a agenda, ex.: \"Sessão Pregão 45/2026 – Pref. de Campinas\".\n- eh_pedido_de_servico=false se a mensagem não pede nenhum serviço com data (propaganda, conversa, aviso genérico).`;\n\nconst SCHEMA = {\n  type: 'object',\n  additionalProperties: false,\n  properties: {\n    eh_pedido_de_servico: { type: 'boolean' },\n    resumo: { type: 'string' },\n    tipo_servico: { type: 'string' },\n    orgao: { type: 'string' },\n    numero_processo: { type: 'string' },\n    local: { type: 'string' },\n    contato: { type: 'string' },\n    data: { type: 'string' },\n    hora_inicio: { type: 'string' },\n    hora_fim: { type: 'string' },\n    trecho_da_data: { type: 'string' },\n    dia_da_semana_citado: { type: 'string' },\n    data_relativa: { type: 'boolean' },\n    outras_datas: {\n      type: 'array',\n      items: {\n        type: 'object',\n        additionalProperties: false,\n        properties: {\n          data: { type: 'string' },\n          hora: { type: 'string' },\n          descricao: { type: 'string' },\n        },\n        required: ['data', 'hora', 'descricao'],\n      },\n    },\n    confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },\n    ambiguidades: { type: 'array', items: { type: 'string' } },\n    observacoes: { type: 'string' },\n  },\n  required: [\n    'eh_pedido_de_servico', 'resumo', 'tipo_servico', 'orgao', 'numero_processo', 'local',\n    'contato', 'data', 'hora_inicio', 'hora_fim', 'trecho_da_data', 'dia_da_semana_citado',\n    'data_relativa', 'outras_datas', 'confianca', 'ambiguidades', 'observacoes',\n  ],\n};\n\n// Calendário pronto: modelos erram conta de dia da semana; assim só precisam consultar\nconst ref = DateTime.fromISO(p.referencia_iso, { setZone: true });\nconst calendario = [];\nfor (let i = 0; i < 60; i++) {\n  const dia = ref.plus({ days: i });\n  calendario.push(dia.setLocale('pt-BR').toFormat('cccc dd/MM/yyyy') + (i === 0 ? ' (hoje)' : i === 1 ? ' (amanhã)' : ''));\n}\n\nconst body = {\n  model: 'openai/gpt-oss-120b',\n  reasoning_effort: 'medium',\n  max_completion_tokens: 4000,\n  response_format: {\n    type: 'json_schema',\n    json_schema: { name: 'pedido', strict: true, schema: SCHEMA },\n  },\n  messages: [\n    { role: 'system', content: SYSTEM },\n    {\n      role: 'user',\n      content:\n        'DATA DE REFERÊNCIA (envio da mensagem): ' + p.referencia_extenso + ' (' + p.referencia_iso + ')\\n' +\n        'ORIGEM: ' + p.origem + '\\n\\n' +\n        'CALENDÁRIO (use para resolver datas relativas e dias da semana, não calcule de cabeça):\\n' +\n        calendario.join('\\n') + '\\n\\n<mensagem>\\n' + p.texto + '\\n</mensagem>',\n    },\n  ],\n};\n\nreturn [{ json: { body } }];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000020",
+      "name": "Groq: extrair dados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 30000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000021",
+      "name": "Validar e montar evento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst p = $('Normalizar entrada').first().json;\nconst fuso = p.fuso;\nconst agora = DateTime.now().setZone(fuso);\n\nconst falha = (erro, dados) => [{ json: { erro, dados: dados || null } }];\n\n// ---- 1. Ler a resposta da IA ----\nlet d;\ntry {\n  if (resp.error) throw new Error('Falha na chamada à IA: ' + JSON.stringify(resp.error).slice(0, 400));\n  const escolha = (resp.choices || [])[0];\n  if (!escolha || !escolha.message) throw new Error('A IA não devolveu resposta.');\n  if (escolha.message.refusal) throw new Error('A IA se recusou a processar a mensagem.');\n  if (escolha.finish_reason === 'length') throw new Error('A resposta da IA veio cortada (limite de tokens).');\n  if (!escolha.message.content) throw new Error('A resposta da IA não trouxe texto.');\n  d = JSON.parse(escolha.message.content);\n} catch (e) {\n  return falha(e.message);\n}\n\nif (!d.eh_pedido_de_servico) {\n  return falha('Não encontrei um pedido de serviço com data nesta mensagem. Se for um pedido, agende manualmente ou mande de novo com a data e a hora escritas.', d);\n}\n\n// ---- 2. Data e hora ----\nconst dia = DateTime.fromISO(d.data || '', { zone: fuso });\nif (!d.data || !dia.isValid) {\n  return falha('Não consegui identificar a data do serviço. Trecho encontrado: \"' + (d.trecho_da_data || '—') + '\"', d);\n}\n\nconst hhmm = s => {\n  const m = /^(\\d{1,2}):(\\d{2})$/.exec((s || '').trim());\n  return m && +m[1] < 24 && +m[2] < 60 ? { hour: +m[1], minute: +m[2] } : null;\n};\nconst hi = hhmm(d.hora_inicio);\nconst hf = hhmm(d.hora_fim);\n\n// Sem botão de confirmação: o evento nasce verde. Qualquer dúvida real sobre a data\n// o deixa vermelho, com \"⚠️ VERIFICAR\" no título. Avisos só informativos não mudam a cor.\nconst alertas = [];\nlet verificar = false;\nconst duvida = msg => { alertas.push(msg); verificar = true; };\n\nlet inicio, fim, diaInteiro = false;\nif (hi) {\n  inicio = dia.set({ ...hi, second: 0, millisecond: 0 });\n  fim = hf ? dia.set({ ...hf, second: 0, millisecond: 0 }) : inicio.plus({ hours: p.duracao_padrao_horas });\n  if (fim <= inicio) fim = inicio.plus({ hours: p.duracao_padrao_horas });\n} else {\n  diaInteiro = true;\n  inicio = dia.startOf('day');\n  fim = inicio.plus({ days: 1 });\n  duvida('HORÁRIO NÃO ENCONTRADO: criei como evento de dia inteiro. Os lembretes contam a partir da meia-noite. Ajuste a hora na agenda.');\n}\n\n// ---- 3. Checagens determinísticas (não dependem da IA) ----\nconst semAcento = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();\nconst DIAS = { seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6, dom: 7 };\nconst citado = DIAS[semAcento(d.dia_da_semana_citado).slice(0, 3)];\nconst diaSemanaReal = inicio.setLocale('pt-BR').toFormat('cccc');\nif (citado && citado !== inicio.weekday) {\n  duvida('CONFLITO DE DATA: a mensagem diz \"' + d.dia_da_semana_citado + '\", mas ' +\n    inicio.toFormat('dd/MM/yyyy') + ' cai numa ' + diaSemanaReal + '. Uma das duas informações está errada. CONFIRA COM O CLIENTE.');\n}\nif (inicio < agora) duvida('A data identificada JÁ PASSOU (' + inicio.toFormat('dd/MM/yyyy HH:mm') + ').');\n// 6 meses, não 1 ano: com o ano omitido, uma data que acabou de passar (\"05/10\" lido em 13/10)\n// vira a do ano seguinte, a ~11 meses. Serviço de licitação raramente é marcado com 6 meses de antecedência.\nif (inicio > agora.plus({ days: 180 })) duvida('A data está a mais de 6 meses de distância. Confira o ano.');\nconst horasAte = inicio.diff(agora, 'hours').hours;\nif (horasAte >= 0 && horasAte < 48) alertas.push('URGENTE: faltam só ' + Math.floor(horasAte) + 'h.');\n// A IA às vezes marca \"relativa\" só porque o ano não foi escrito (\"05/11 às 10:00\"). Com dia e mês\n// escritos no trecho, a data não é relativa, e o alerta seria ruído que ensina o responsável a ignorar alertas.\nconst temDiaEMes = /\\d{1,2}\\s*\\/\\s*\\d{1,2}|\\d{1,2}º?\\s+de\\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/.test(semAcento(d.trecho_da_data));\n// A IA dá confiança MÉDIA a toda data relativa (\"amanhã às 15h\"). Digitada na hora, isso não é dúvida:\n// a resposta já mostra o dia por extenso. Visto no teste de 14/10/2026: todo \"amanhã\" ficava vermelho.\nconst relativaDigitada = d.data_relativa && !temDiaEMes && !p.encaminhada;\nif (d.confianca === 'baixa' || (d.confianca === 'media' && !relativaDigitada)) {\n  duvida('Confiança da IA: ' + d.confianca.toUpperCase() + '.');\n}\nif (d.data_relativa && !temDiaEMes) {\n  if (p.encaminhada) {\n    // O WhatsApp não diz quando o cliente escreveu: \"amanhã\" de 3 dias atrás vira o amanhã de hoje\n    duvida('Mensagem ENCAMINHADA com data relativa: o WhatsApp não informa quando o cliente escreveu, então \"' +\n      (d.trecho_da_data || 'a data') + '\" foi calculado a partir de quando você encaminhou (' + p.referencia_extenso +\n      '). Se o cliente escreveu em outro dia, a data está errada.');\n  } else {\n    alertas.push('A data foi escrita de forma relativa (\"amanhã\", \"sexta que vem\"...) e foi calculada a partir de ' + p.referencia_extenso + '.');\n  }\n}\nfor (const a of d.ambiguidades || []) duvida(a);\n\n// ---- 4. Evento ----\nconst resumo = d.resumo || d.tipo_servico || 'Serviço de licitação';\nconst convidados = [...new Set((p.emails_equipe || []).map(e => String(e).trim().toLowerCase()).filter(e => e.includes('@')))];\nconst outras = (d.outras_datas || []).map(o => '• ' + o.descricao + ': ' + o.data + (o.hora ? ' ' + o.hora : ''));\n\nconst descricao = [\n  'Serviço: ' + (d.tipo_servico || '—'),\n  'Órgão: ' + (d.orgao || '—'),\n  'Processo/Edital: ' + (d.numero_processo || '—'),\n  'Local: ' + (d.local || '—'),\n  'Contato: ' + (d.contato || '—'),\n  '',\n  'Trecho original da data: \"' + (d.trecho_da_data || '—') + '\"',\n  outras.length ? '\\nOutras datas na mensagem:\\n' + outras.join('\\n') : '',\n  alertas.length ? '\\n⚠️ ALERTAS:\\n- ' + alertas.join('\\n- ') : '',\n  d.observacoes ? '\\nObservações: ' + d.observacoes : '',\n  '',\n  'Origem: ' + p.origem,\n  '--- Mensagem original ---',\n  p.texto.length > 6000 ? p.texto.slice(0, 6000) + '\\n[...texto completo na mensagem original]' : p.texto,\n].join('\\n');\n\nconst evento = {\n  summary: (verificar ? '⚠️ VERIFICAR: ' : '') + resumo,\n  location: d.local || undefined,\n  description: descricao,\n  colorId: verificar ? '11' : '10', // vermelho = conferir a data; verde = ok\n  extendedProperties: { private: { agenda_bot: '1' } }, // marca usada pelo workflow de lembretes\n  start: diaInteiro ? { date: inicio.toISODate() } : { dateTime: inicio.toISO({ suppressMilliseconds: true }), timeZone: fuso },\n  end: diaInteiro ? { date: fim.toISODate() } : { dateTime: fim.toISO({ suppressMilliseconds: true }), timeZone: fuso },\n  // Alarmes no celular de quem é dono da agenda. Os e-mails de lembrete saem do workflow de lembretes.\n  reminders: {\n    useDefault: false,\n    overrides: [\n      { method: 'popup', minutes: 2880 }, // 2 dias\n      { method: 'popup', minutes: 1440 }, // 1 dia\n      { method: 'popup', minutes: 720 },  // 12 horas\n      { method: 'popup', minutes: 360 },  // 6 horas\n    ],\n  },\n};\n// Convidados recebem o convite do Google e os lembretes por e-mail\nif (convidados.length) evento.attendees = convidados.map(email => ({ email }));\n\n// ---- 5. Resposta para quem mandou o pedido (WhatsApp ou e-mail) ----\nconst dataExtenso = inicio.setLocale('pt-BR').toFormat(\"cccc, dd 'de' LLLL 'de' yyyy\").toUpperCase() +\n  (diaInteiro ? ' (SEM HORÁRIO)' : ' às ' + inicio.toFormat('HH:mm'));\n\n// Mesmo conteúdo nos dois formatos: no WhatsApp, *negrito*; no e-mail, HTML com o texto do cliente escapado\nfunction resposta(b, t) {\n  return [\n    verificar ? '⚠️ ' + b('Agendei, mas CONFIRA a data') : '✅ ' + b('Agendado'),\n    b(resumo),\n    '',\n    '📅 ' + b(dataExtenso),\n    t('A mensagem diz: \"' + (d.trecho_da_data || '—') + '\"'),\n    alertas.length ? '\\n⚠️ ' + b('ATENÇÃO:') + '\\n' + alertas.map(a => '• ' + t(a)).join('\\n') : '',\n    '',\n    t('Serviço: ' + (d.tipo_servico || '—')),\n    t('Órgão: ' + (d.orgao || '—')),\n    t('Processo: ' + (d.numero_processo || '—')),\n    t('Local: ' + (d.local || '—')),\n    t('Contato: ' + (d.contato || '—')),\n    outras.length ? '\\n' + t('Outras datas na mensagem:') + '\\n' + outras.map(t).join('\\n') : '',\n    convidados.length ? '\\n' + t('Convite e lembretes por e-mail para: ' + convidados.join(', ')) : '',\n    '',\n    t(verificar\n      ? 'Na agenda o evento ficou VERMELHO, com \"VERIFICAR\" no título. Confira a data e corrija direto no evento se precisar; os lembretes se ajustam sozinhos.'\n      : 'Se algo estiver errado, corrija direto no evento; os lembretes se ajustam sozinhos.'),\n  ].join('\\n');\n}\nconst esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nlet resposta_whatsapp = resposta(s => '*' + s + '*', s => s);\nif (resposta_whatsapp.length > 3800) resposta_whatsapp = resposta_whatsapp.slice(0, 3700) + '\\n[...]'; // limite do WhatsApp: 4096\nconst resposta_html = resposta(s => '<b>' + esc(s) + '</b>', esc).replace(/\\n/g, '<br>');\n\nreturn [{\n  json: {\n    erro: '',\n    resumo,\n    verificar,\n    evento,\n    resposta_whatsapp,\n    resposta_html,\n    assunto_email: (verificar ? '⚠️ CONFIRA: ' : '✅ Agendado: ') + resumo + ' — ' + inicio.toFormat('dd/MM') + (diaInteiro ? '' : ' ' + inicio.toFormat('HH:mm')),\n    alertas,\n    dados: d,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000022",
+      "name": "Extraiu certo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000023",
+              "leftValue": "={{ $json.erro }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000024",
+      "name": "Criar evento na agenda",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        -200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/{{ encodeURIComponent($('Normalizar entrada').first().json.calendario_id) }}/events?sendUpdates=all",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.evento) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000025",
+      "name": "Responder pelo WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1780,
+        -200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000026",
+              "leftValue": "={{ $('Normalizar entrada').first().json.canal === 'whatsapp' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000027",
+      "name": "WhatsApp: agendado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        -300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v23.0/{{ $('Normalizar entrada').first().json.whatsapp_phone_number_id }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $('Normalizar entrada').first().json.responder_para, type: 'text', text: { preview_url: false, body: $('Validar e montar evento').first().json.resposta_whatsapp + '\\n\\nAbrir na agenda: ' + $('Criar evento na agenda').first().json.htmlLink } }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000028",
+      "name": "E-mail: agendado",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2220,
+        -160
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Normalizar entrada').first().json.email_responsavel }}",
+        "subject": "={{ $('Validar e montar evento').first().json.assunto_email }}",
+        "emailType": "html",
+        "message": "={{ $('Validar e montar evento').first().json.resposta_html }}<br><br><a href=\"{{ $('Criar evento na agenda').first().json.htmlLink }}\">Abrir na agenda</a>{{ $json.error ? '<p><i>Este aviso foi por e-mail porque a resposta pelo WhatsApp falhou: ' + JSON.stringify($json.error).slice(0, 300).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</i></p>' : '' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000029",
+      "name": "Montar aviso de falha",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// Monta o aviso \"NÃO agendado\", venha a falha de onde vier:\n// mensagem ilegível (áudio, imagem), IA, ou erro do Google Agenda ao criar o evento.\nconst j = $input.first().json;\nconst p = $('Normalizar entrada').first().json;\n\nconst motivo = j.erro || ('Erro ao criar o evento no Google Agenda: ' + JSON.stringify(j.error || j).slice(0, 300));\nconst esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nreturn [{\n  json: {\n    motivo,\n    texto_whatsapp: '🚨 *NÃO agendei este pedido.*\\n\\n' + motivo + '\\n\\nSe for um pedido, coloque na agenda manualmente.',\n    assunto_email: '🚨 Pedido NÃO agendado — agende manualmente',\n    html_email:\n      '<p><b>O robô não conseguiu agendar este pedido.</b> Coloque na agenda manualmente.</p>' +\n      '<p>Motivo: ' + esc(motivo) + '</p>' +\n      '<p>Origem: ' + esc(p.origem) + '</p><hr>' +\n      '<p>' + esc(p.texto.slice(0, 6000)).replace(/\\n/g, '<br>') + '</p>',\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000030",
+      "name": "Avisar pelo WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1780,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0000000-0000-4000-8000-000000000031",
+              "leftValue": "={{ $('Normalizar entrada').first().json.canal === 'whatsapp' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000032",
+      "name": "WhatsApp: NÃO agendado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v23.0/{{ $('Normalizar entrada').first().json.whatsapp_phone_number_id }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $('Normalizar entrada').first().json.responder_para, type: 'text', text: { preview_url: false, body: $('Montar aviso de falha').first().json.texto_whatsapp } }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000033",
+      "name": "E-mail: NÃO agendado",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2220,
+        200
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Normalizar entrada').first().json.email_responsavel }}",
+        "subject": "={{ $('Montar aviso de falha').first().json.assunto_email }}",
+        "emailType": "html",
+        "message": "={{ $('Montar aviso de falha').first().json.html_email }}{{ $json.error ? '<p><i>Este aviso foi por e-mail porque a resposta pelo WhatsApp falhou: ' + JSON.stringify($json.error).slice(0, 300).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</i></p>' : '' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "WhatsApp: novo pedido": {
+      "main": [
+        [
+          {
+            "node": "Normalizar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: novo pedido": {
+      "main": [
+        [
+          {
+            "node": "Normalizar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formulário: colar pedido": {
+      "main": [
+        [
+          {
+            "node": "Normalizar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar entrada": {
+      "main": [
+        [
+          {
+            "node": "Resposta não entregue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta não entregue?": {
+      "main": [
+        [
+          {
+            "node": "Montar aviso de não entrega",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "É comando?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar aviso de não entrega": {
+      "main": [
+        [
+          {
+            "node": "E-mail: resposta não entregue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É comando?": {
+      "main": [
+        [
+          {
+            "node": "Pediu a agenda?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dá para ler?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pediu a agenda?": {
+      "main": [
+        [
+          {
+            "node": "Ler próximos eventos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler próximos eventos": {
+      "main": [
+        [
+          {
+            "node": "Montar lista de eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar lista de eventos": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: responder comando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar menu": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: responder comando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dá para ler?": {
+      "main": [
+        [
+          {
+            "node": "Montar pedido para a IA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar aviso de falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar pedido para a IA": {
+      "main": [
+        [
+          {
+            "node": "Groq: extrair dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq: extrair dados": {
+      "main": [
+        [
+          {
+            "node": "Validar e montar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar e montar evento": {
+      "main": [
+        [
+          {
+            "node": "Extraiu certo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraiu certo?": {
+      "main": [
+        [
+          {
+            "node": "Criar evento na agenda",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar aviso de falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar evento na agenda": {
+      "main": [
+        [
+          {
+            "node": "Responder pelo WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar aviso de falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder pelo WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: agendado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-mail: agendado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: agendado": {
+      "main": [
+        [],
+        [
+          {
+            "node": "E-mail: agendado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar aviso de falha": {
+      "main": [
+        [
+          {
+            "node": "Avisar pelo WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avisar pelo WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: NÃO agendado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-mail: NÃO agendado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: NÃO agendado": {
+      "main": [
+        [],
+        [
+          {
+            "node": "E-mail: NÃO agendado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}
