@@ -142,7 +142,8 @@ Custo mensal no plano grátis: **R$ 0**. Quando o plano grátis apertar, os upgr
     ├── OPERACAO.md                        ← o que fazer quando chega um 🚨, logs, backup, custos
     ├── DECISOES.md                        ← por que n8n, Groq, WhatsApp oficial, Render... e o que foi descartado
     ├── index.html, privacidade.html       ← página inicial e política de privacidade (GitHub Pages; o Google exige)
-    └── apresentacao/                      ← "Como funciona" (para vender) e o guia de uso do cliente, em PDF
+    ├── apresentacao/                      ← "Como funciona" (para vender) e o guia de uso do cliente, em PDF
+    └── divulgacao/linkedin/               ← carrossel e banner do projeto para o LinkedIn, com o texto do post
 ```
 
 ## Colocar no ar
