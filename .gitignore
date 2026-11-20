@@ -4,3 +4,9 @@ package-lock.json
 *.env
 !deploy/.env.exemplo
 *.zip
+
+# Sistema operacional e editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,4 +1,37 @@
-# Agenda por WhatsApp · Pedidos → Agenda → Lembretes
+<p align="center">
+  <img src="docs/banner.png" alt="Agenda por WhatsApp · Pedidos → Agenda → Lembretes" width="100%">
+</p>
+
+<h1 align="center">🤖 Agenda por WhatsApp · Pedidos → Agenda → Lembretes</h1>
+
+<p align="center">
+  Automação em <b>n8n</b> para empresas que recebem pedidos de serviço pelo <b>WhatsApp</b>: a IA extrai os dados, o código confere a data, o evento entra no <b>Google Agenda</b> e a equipe recebe lembretes por e-mail.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/n8n-2.42.5-EA4B71?style=for-the-badge&logo=n8n&logoColor=white" alt="n8n">
+  <img src="https://img.shields.io/badge/WhatsApp-Cloud%20API-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="WhatsApp Cloud API">
+  <img src="https://img.shields.io/badge/Google%20Agenda-API-4285F4?style=for-the-badge&logo=googlecalendar&logoColor=white" alt="Google Agenda">
+  <img src="https://img.shields.io/badge/Gmail-API-EA4335?style=for-the-badge&logo=gmail&logoColor=white" alt="Gmail">
+  <img src="https://img.shields.io/badge/Groq-IA-F55036?style=for-the-badge" alt="Groq">
+  <img src="https://img.shields.io/badge/JavaScript-Node%2018%2B-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black" alt="JavaScript">
+  <img src="https://img.shields.io/badge/Docker-Render-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+</p>
+
+<p align="center">
+  <a href="#-sobre-o-projeto">Sobre</a> •
+  <a href="#-funcionalidades">Funcionalidades</a> •
+  <a href="#️-como-funciona">Como funciona</a> •
+  <a href="#️-telas">Telas</a> •
+  <a href="#-como-colocar-no-ar">Colocar no ar</a> •
+  <a href="#-testes-e-desenvolvimento">Testes</a> •
+  <a href="#-estrutura-do-projeto">Estrutura</a> •
+  <a href="#-documentação-completa">Documentação</a>
+</p>
+
+---
+
+## 📌 Sobre o projeto
 
 Automação em **n8n** para empresas que recebem pedidos de serviço pelo WhatsApp. Feita para assessorias de licitação (a IA conhece pregão, sessão, impugnação e edital) e adaptável a outros serviços pelo prompt em `src/02_montar_requisicao.js`.
 
@@ -8,37 +41,20 @@ Os pedidos de serviço chegam pelo **WhatsApp** (encaminhados ao número do rob�
 
 > **Por que existe:** um serviço deixou de ser executado porque a data do pedido foi lida errada. Todo o projeto é desenhado em torno de um objetivo: **nenhum pedido pode sumir ou ficar com a data errada sem que alguém seja avisado.**
 
----
+## ✨ Funcionalidades
 
-## Sumário
+| | Recurso | Descrição |
+|---|---|---|
+| 📥 | **Recebe pedidos** | Mensagens de texto encaminhadas ao **WhatsApp do robô**, só de números autorizados (o robô não lê as conversas do responsável). Também e-mails com o rótulo `pedidos-licitacao` no Gmail, ou texto colado num formulário. |
+| 🤖 | **Extrai os dados com IA** | Órgão, tipo de serviço, nº do processo, local, contato, **data e hora**, e outras datas citadas (impugnação, abertura, disputa). |
+| 🔎 | **Confere a data sem IA** | Dia da semana bate com a data? A data já passou? Está a mais de 6 meses? Tem horário? É uma mensagem encaminhada com "amanhã"? Faltam menos de 48h? Cada problema vira um alerta visível. |
+| 📅 | **Agenda na hora** | Cria o evento no Google Agenda sem etapa de confirmação: **verde** quando está tudo certo, **vermelho** com `⚠️ VERIFICAR` quando há dúvida real sobre a data. |
+| 🗂️ | **Comandos no WhatsApp** | **"agenda"** → lista dos serviços dos próximos 60 dias, por dia, com ⚠️ nos que estão para conferir. **"oi"/"menu"** → botões *📅 Ver agenda* e *➕ Como agendar*. Só vale se a mensagem for só a palavra; o resto é pedido. Não passa pela IA. |
+| 💬 | **Responde na mesma conversa** | No WhatsApp, com a data **por extenso**, o trecho original da mensagem e os alertas. Pedido por e-mail ou formulário recebe a resposta por e-mail. |
+| ⏰ | **Lembra por e-mail** | O responsável e a equipe (`emails_equipe`) recebem o convite do Google e um e-mail 2 dias e 1 dia antes, lido direto da agenda (se a data mudar na agenda, os lembretes acompanham). |
+| 🚨 | **Avisa quando algo falha** | Pedido que não pôde ser agendado (áudio, falha da IA, erro do Google) gera aviso no WhatsApp ou por e-mail. WhatsApp fora → o aviso vai por e-mail. Resposta que a Meta aceitou mas **não entregou** (conta bloqueada, mais de 24h desde a última mensagem) → e-mail com o motivo. Agenda ilegível → e-mail "lembretes PARADOS". |
 
-- [O que faz](#o-que-faz)
-- [Como funciona](#como-funciona)
-- [Infraestrutura](#infraestrutura)
-- [Estrutura do repositório](#estrutura-do-repositório)
-- [Colocar no ar](#colocar-no-ar)
-- [Desenvolvimento](#desenvolvimento)
-- [Segurança](#segurança)
-- [Limitações conhecidas](#limitações-conhecidas)
-- [Próximos passos](#próximos-passos)
-- [Documentação completa](#documentação-completa)
-
----
-
-## O que faz
-
-| | |
-|---|---|
-| 📥 **Recebe pedidos** | Mensagens de texto encaminhadas ao **WhatsApp do robô**, só de números autorizados (o robô não lê as conversas do responsável). Também e-mails com o rótulo `pedidos-licitacao` no Gmail, ou texto colado num formulário. |
-| 🤖 **Extrai os dados com IA** | Órgão, tipo de serviço, nº do processo, local, contato, **data e hora**, e outras datas citadas (impugnação, abertura, disputa). |
-| 🔎 **Confere a data sem IA** | Dia da semana bate com a data? A data já passou? Está a mais de 6 meses? Tem horário? É uma mensagem encaminhada com "amanhã"? Faltam menos de 48h? Cada problema vira um alerta visível. |
-| 📅 **Agenda na hora** | Cria o evento no Google Agenda sem etapa de confirmação: **verde** quando está tudo certo, **vermelho** com `⚠️ VERIFICAR` quando há dúvida real sobre a data. |
-| 🗂️ **Comandos no WhatsApp** | **"agenda"** → lista dos serviços dos próximos 60 dias, por dia, com ⚠️ nos que estão para conferir. **"oi"/"menu"** → botões *📅 Ver agenda* e *➕ Como agendar*. Só vale se a mensagem for só a palavra; o resto é pedido. Não passa pela IA. |
-| 💬 **Responde na mesma conversa** | No WhatsApp, com a data **por extenso**, o trecho original da mensagem e os alertas. Pedido por e-mail ou formulário recebe a resposta por e-mail. |
-| ⏰ **Lembra por e-mail** | O responsável e a equipe (`emails_equipe`) recebem o convite do Google e um e-mail 2 dias e 1 dia antes, lido direto da agenda (se a data mudar na agenda, os lembretes acompanham). |
-| 🚨 **Avisa quando algo falha** | Pedido que não pôde ser agendado (áudio, falha da IA, erro do Google) gera aviso no WhatsApp ou por e-mail. WhatsApp fora → o aviso vai por e-mail. Resposta que a Meta aceitou mas **não entregou** (conta bloqueada, mais de 24h desde a última mensagem) → e-mail com o motivo. Agenda ilegível → e-mail "lembretes PARADOS". |
-
-## Como funciona
+## ⚙️ Como funciona
 
 São dois workflows independentes no n8n. Desde 13/10/2026, a pedido do cliente, a entrada é o WhatsApp oficial e o Telegram saiu ([D13](docs/DECISOES.md#d13-whatsapp-oficial-como-entrada-e-resposta-telegram-removido)).
 
@@ -88,7 +104,22 @@ Não conseguiu ler a agenda ─► 🚨 "lembretes PARADOS" por e-mail para o re
 
 Detalhes nó a nó em [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md). O porquê de cada escolha está em [`docs/DECISOES.md`](docs/DECISOES.md).
 
-## Infraestrutura
+## 🖼️ Telas
+
+Diagramas desenhados a partir dos JSONs reais dos workflows (nós e conexões com as posições do n8n) e a saída real de `npm test`.
+Nas setas, verde é a saída "sim" de uma condição e vermelho é a saída "não" ou de erro.
+
+<table>
+  <tr>
+    <td align="center" colspan="2"><b>Workflow 1 · Pedidos → Agenda</b> (<code>workflow-pedidos.json</code>)<br><img src="docs/screenshots/workflow-pedidos.png" alt="Diagrama do workflow 1"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Workflow 2 · Lembretes por e-mail</b> (<code>workflow-lembretes.json</code>)<br><img src="docs/screenshots/workflow-lembretes.png" alt="Diagrama do workflow 2"></td>
+    <td align="center"><b>Testes</b> (<code>npm test</code>, 47 verificações)<br><img src="docs/screenshots/testes.png" alt="Saída do npm test"></td>
+  </tr>
+</table>
+
+## ☁️ Infraestrutura
 
 | Peça | Serviço | Plano | Observação |
 |---|---|---|---|
@@ -110,14 +141,11 @@ Custo mensal no plano grátis: **R$ 0**. Quando o plano grátis apertar, os upgr
 | Mensagem iniciada pelo robô, ex.: lembrete no WhatsApp | Paga por mensagem (centavos) e exige modelo aprovado pela Meta. Fica para a próxima fase |
 | Número | Precisa de um número exclusivo, que não esteja em uso no app do WhatsApp. Para testes, o número de teste grátis da Meta serve, mas só envia para até 5 destinatários verificados |
 
-## Estrutura do repositório
+## 📁 Estrutura do projeto
 
 ```
 .
 ├── README.md                              ← você está aqui
-├── INSTALACAO.md                          ← instalação do zero, em ordem, com conferências
-├── SETUP.md                               ← configurar credenciais, importar e testar os workflows
-├── ENTREGA.md                             ← passar o sistema para as contas do cliente
 ├── Dockerfile                             ← imagem do n8n usada pelo Render
 ├── workflow-pedidos.json                  ← workflow 1 (GERADO por build.js, não editar à mão)
 ├── workflow-lembretes.json                ← workflow 2 (GERADO por build.js, não editar à mão)
@@ -138,15 +166,19 @@ Custo mensal no plano grátis: **R$ 0**. Quando o plano grátis apertar, os upgr
 │   ├── LEIA-ME.md                         ← alternativa: VPS / Oracle Cloud com Docker + Caddy
 │   ├── docker-compose.yml, Caddyfile, .env.exemplo
 └── docs/
+    ├── SETUP.md                           ← configurar credenciais, importar e testar os workflows
+    ├── INSTALACAO.md                      ← instalação do zero, em ordem, com conferências
+    ├── ENTREGA.md                         ← passar o sistema para as contas do cliente
     ├── ARQUITETURA.md                     ← cada nó, estados do evento, algoritmo dos lembretes
     ├── OPERACAO.md                        ← o que fazer quando chega um 🚨, logs, backup, custos
     ├── DECISOES.md                        ← por que n8n, Groq, WhatsApp oficial, Render... e o que foi descartado
     ├── index.html, privacidade.html       ← página inicial e política de privacidade (GitHub Pages; o Google exige)
     ├── apresentacao/                      ← "Como funciona" (para vender) e o guia de uso do cliente, em PDF
+    ├── banner.png, screenshots/           ← imagens deste README
     └── divulgacao/linkedin/               ← carrossel e banner do projeto para o LinkedIn, com o texto do post
 ```
 
-## Colocar no ar
+## 🚀 Como colocar no ar
 
 1. **Instalação do zero:** [`docs/INSTALACAO.md`](docs/INSTALACAO.md). É o roteiro em ordem; os itens abaixo são os guias detalhados que ele usa.
    - **Hospedagem do n8n:** [`deploy/RENDER.md`](deploy/RENDER.md) (Render + Supabase) ou [`deploy/LEIA-ME.md`](deploy/LEIA-ME.md) (VPS).
@@ -154,7 +186,7 @@ Custo mensal no plano grátis: **R$ 0**. Quando o plano grátis apertar, os upgr
 2. **Entrega ao cliente** (WhatsApp e Google nas contas dele): [`docs/ENTREGA.md`](docs/ENTREGA.md). Guia de uso: [`docs/apresentacao/guia-do-cliente.pdf`](docs/apresentacao/guia-do-cliente.pdf).
 3. **Rotina de operação:** [`docs/OPERACAO.md`](docs/OPERACAO.md).
 
-## Desenvolvimento
+## ✅ Testes e desenvolvimento
 
 Requer Node.js 18+.
 
@@ -180,7 +212,7 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 
 > ⚠️ **Sem o Build Filter, todo push na branch `main` refaz o deploy do n8n no Render** (alguns minutos fora do ar). Configure-o na instalação: [`docs/OPERACAO.md`](docs/OPERACAO.md#evitar-redeploy-a-cada-push).
 
-## Segurança
+## 🔒 Segurança
 
 - **Nenhuma senha, chave de API ou token fica neste repositório.** Credenciais do Google, do Groq e do WhatsApp (token de acesso e chave secreta do app da Meta) ficam **criptografadas dentro do n8n**. As variáveis do servidor (senha do banco, `N8N_ENCRYPTION_KEY`) ficam no **painel do Render**.
 - A `N8N_ENCRYPTION_KEY` precisa ter **cópia fora do Render** (gerenciador de senhas). Sem ela, as credenciais salvas no n8n não podem ser recuperadas.
@@ -192,7 +224,7 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 - O n8n tem acesso ao Gmail e à agenda da empresa: conta de dono com **senha forte e 2FA**.
 - O repositório pode ser **público**: não guarda segredos. O formulário pede usuário e senha (Basic Auth), porque o endereço dele aparece no código.
 
-## Limitações conhecidas
+## ⚠️ Limitações conhecidas
 
 1. **Não há confirmação explícita.** A conferência depende de alguém ler a resposta (data por extenso + trecho original + alertas). Uma data errada que nenhuma checagem perceba nasce verde.
 2. **Mensagem encaminhada não traz a data original.** O WhatsApp não informa quando o cliente escreveu, então "amanhã" é calculado a partir do encaminhamento. Por isso esse caso vira `⚠️ VERIFICAR`. Datas escritas ("05/11") não têm esse problema.
@@ -205,7 +237,7 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 9. **Plano grátis:** se o cron-job.org parar, o n8n dorme e os lembretes param. 512 MB de memória é o limite para o n8n.
 10. **Groq (`gpt-oss-120b`) é mais fraco que modelos de ponta** para ler datas em português e escolher a data certa de um edital. É compensado pelo calendário enviado junto e pelas checagens em código, mas convém acompanhar as primeiras semanas.
 
-## Próximos passos
+## 🧭 Próximos passos
 
 - [ ] Primeiro teste ponta a ponta com credenciais reais (roteiro no `docs/SETUP.md`)
 - [ ] **Lembretes no WhatsApp** (mensagens de modelo aprovadas pela Meta, pagas por mensagem)
@@ -217,7 +249,7 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 - [ ] Detectar remarcação ("a sessão foi adiada") e atualizar o evento existente em vez de criar outro
 - [ ] **Módulo de notas fiscais** (segundo sistema)
 
-## Documentação completa
+## 📚 Documentação completa
 
 | Documento | Conteúdo |
 |---|---|
@@ -228,6 +260,17 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 | [`docs/OPERACAO.md`](docs/OPERACAO.md) | Manual de operação e resolução de problemas |
 | [`docs/DECISOES.md`](docs/DECISOES.md) | Registro das decisões técnicas e alternativas descartadas |
 
----
+## 🛠️ Tecnologias
 
-Mantido por [@kauaxp77](https://github.com/kauaxp77).
+- **n8n 2.42.5**: motor de automação (workflows gerados por `build.js`)
+- **JavaScript (Node.js 18+)**: código dos nós "Code", gerador dos workflows e testes; **luxon** para datas nos testes
+- **WhatsApp Cloud API** (Meta): entrada dos pedidos e respostas
+- **Groq** (`openai/gpt-oss-120b`): extração dos dados do pedido em JSON
+- **Google Agenda** e **Gmail** (OAuth2): eventos, convites, respostas e lembretes por e-mail
+- **Docker**: imagem do n8n no Render; alternativa com Docker Compose + Caddy em `deploy/`
+
+## 👨‍💻 Autor
+
+Desenvolvido por **[kauaxp77](https://github.com/kauaxp77)**
+
+<p align="center">⭐ Se curtiu o projeto, deixe uma estrela!</p>
