@@ -28,14 +28,14 @@ O WhatsApp fica no portfólio **do cliente**, com você como administrador. Assi
 
 ## 2. Banco no Supabase (10 min)
 
-Novo projeto e o SQL de [`deploy/RENDER.md` → Recriar do zero](deploy/RENDER.md#recriar-do-zero): usuário `n8n` com senha forte, **sem** criar o schema à mão (o n8n cria; ver `docs/DECISOES.md`, D10). Anote o host do *Session pooler* (projeto → Connect).
+Novo projeto e o SQL de [`deploy/RENDER.md` → Recriar do zero](../deploy/RENDER.md#recriar-do-zero): usuário `n8n` com senha forte, **sem** criar o schema à mão (o n8n cria; ver `docs/DECISOES.md`, D10). Anote o host do *Session pooler* (projeto → Connect).
 
 **Conferência:** o usuário `n8n` existe (`select rolname from pg_roles where rolname = 'n8n'`).
 
 ## 3. n8n no Render (20 min)
 
 1. Render → **New → Web Service** → sua cópia → Docker (o `Dockerfile` da raiz) → plano **Free**.
-2. Variáveis de ambiente: a tabela de [`deploy/RENDER.md`](deploy/RENDER.md#variáveis-de-ambiente-do-serviço), trocando host, usuário do banco e endereço do serviço pelos seus. Gere a chave com `openssl rand -hex 32` e **guarde uma cópia fora do Render**: sem ela, as credenciais salvas no n8n viram lixo.
+2. Variáveis de ambiente: a tabela de [`deploy/RENDER.md`](../deploy/RENDER.md#variáveis-de-ambiente-do-serviço), trocando host, usuário do banco e endereço do serviço pelos seus. Gere a chave com `openssl rand -hex 32` e **guarde uma cópia fora do Render**: sem ela, as credenciais salvas no n8n viram lixo.
 3. **Settings:** Health Check Path = `/healthz`; **Build Filters → Included Paths** = `Dockerfile`. Sem o filtro, qualquer commit de documentação reinicia o n8n. Salvar essas configurações reinicia o serviço uma vez.
 
 **Conferência:** nos Logs, aparece `Editor is now accessible via: https://…` e **não** aparece `Task runner connection attempt failed`.
@@ -85,8 +85,8 @@ Siga o [`SETUP.md`](SETUP.md), passos 1 a 6, **no portfólio do cliente**:
 
 ## 8. Entregar
 
-O roteiro de entrega e o guia de uso estão em [`ENTREGA.md`](ENTREGA.md) e [`docs/apresentacao/`](docs/apresentacao/LEIA-ME.md). Troque no guia o número do robô e o contato de suporte.
+O roteiro de entrega e o guia de uso estão em [`ENTREGA.md`](ENTREGA.md) e [`docs/apresentacao/`](apresentacao/LEIA-ME.md). Troque no guia o número do robô e o contato de suporte.
 
 ## Se algo der errado
 
-[`docs/OPERACAO.md`](docs/OPERACAO.md): alertas, problemas comuns (WhatsApp, Google, Render), backup e os limites do plano grátis. Por que cada peça foi escolhida: [`docs/DECISOES.md`](docs/DECISOES.md).
+[`docs/OPERACAO.md`](OPERACAO.md): alertas, problemas comuns (WhatsApp, Google, Render), backup e os limites do plano grátis. Por que cada peça foi escolhida: [`docs/DECISOES.md`](DECISOES.md).

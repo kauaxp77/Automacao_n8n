@@ -4,7 +4,7 @@ Automação em **n8n** para empresas que recebem pedidos de serviço pelo WhatsA
 
 Os pedidos de serviço chegam pelo **WhatsApp** (encaminhados ao número do robô), por e-mail ou por um formulário. A IA extrai os dados, o serviço entra na Agenda Google na hora e o robô responde na mesma conversa. O responsável e a equipe recebem o convite e **lembretes por e-mail 2 dias e 1 dia antes**; o celular do dono da agenda toca alarmes 2 dias, 1 dia, 12 horas e 6 horas antes.
 
-**Para instalar num cliente novo:** [`INSTALACAO.md`](INSTALACAO.md) (do zero, cerca de 3 horas) e [`ENTREGA.md`](ENTREGA.md) (passar o sistema para as contas do cliente).
+**Para instalar num cliente novo:** [`docs/INSTALACAO.md`](docs/INSTALACAO.md) (do zero, cerca de 3 horas) e [`docs/ENTREGA.md`](docs/ENTREGA.md) (passar o sistema para as contas do cliente).
 
 > **Por que existe:** um serviço deixou de ser executado porque a data do pedido foi lida errada. Todo o projeto é desenhado em torno de um objetivo: **nenhum pedido pode sumir ou ficar com a data errada sem que alguém seja avisado.**
 
@@ -148,10 +148,10 @@ Custo mensal no plano grátis: **R$ 0**. Quando o plano grátis apertar, os upgr
 
 ## Colocar no ar
 
-1. **Instalação do zero:** [`INSTALACAO.md`](INSTALACAO.md). É o roteiro em ordem; os itens abaixo são os guias detalhados que ele usa.
+1. **Instalação do zero:** [`docs/INSTALACAO.md`](docs/INSTALACAO.md). É o roteiro em ordem; os itens abaixo são os guias detalhados que ele usa.
    - **Hospedagem do n8n:** [`deploy/RENDER.md`](deploy/RENDER.md) (Render + Supabase) ou [`deploy/LEIA-ME.md`](deploy/LEIA-ME.md) (VPS).
-   - **Credenciais, importação e testes:** [`SETUP.md`](SETUP.md): Gmail, Google Agenda, Groq, app da Meta e número do WhatsApp, e o roteiro de testes.
-2. **Entrega ao cliente** (WhatsApp e Google nas contas dele): [`ENTREGA.md`](ENTREGA.md). Guia de uso: [`docs/apresentacao/guia-do-cliente.pdf`](docs/apresentacao/guia-do-cliente.pdf).
+   - **Credenciais, importação e testes:** [`docs/SETUP.md`](docs/SETUP.md): Gmail, Google Agenda, Groq, app da Meta e número do WhatsApp, e o roteiro de testes.
+2. **Entrega ao cliente** (WhatsApp e Google nas contas dele): [`docs/ENTREGA.md`](docs/ENTREGA.md). Guia de uso: [`docs/apresentacao/guia-do-cliente.pdf`](docs/apresentacao/guia-do-cliente.pdf).
 3. **Rotina de operação:** [`docs/OPERACAO.md`](docs/OPERACAO.md).
 
 ## Desenvolvimento
@@ -207,7 +207,7 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 
 ## Próximos passos
 
-- [ ] Primeiro teste ponta a ponta com credenciais reais (roteiro no `SETUP.md`)
+- [ ] Primeiro teste ponta a ponta com credenciais reais (roteiro no `docs/SETUP.md`)
 - [ ] **Lembretes no WhatsApp** (mensagens de modelo aprovadas pela Meta, pagas por mensagem)
 - [ ] **Transcrição de áudio** (Groq Whisper), para aceitar pedidos por áudio
 - [ ] **Ler PDFs de edital** recebidos no WhatsApp ou por e-mail
@@ -221,7 +221,7 @@ npm run build                      # (= node build.js) gera workflow-pedidos.jso
 
 | Documento | Conteúdo |
 |---|---|
-| [`SETUP.md`](SETUP.md) | Configuração passo a passo e roteiro de testes |
+| [`docs/SETUP.md`](docs/SETUP.md) | Configuração passo a passo e roteiro de testes |
 | [`deploy/RENDER.md`](deploy/RENDER.md) | Hospedagem atual (Render + Supabase + cron-job.org) |
 | [`deploy/LEIA-ME.md`](deploy/LEIA-ME.md) | Hospedagem alternativa (VPS / Oracle Cloud) |
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Funcionamento interno, nó a nó |

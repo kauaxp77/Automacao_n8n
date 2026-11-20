@@ -80,7 +80,7 @@ Configuradas no Render (Environment). Os **valores secretos não ficam neste rep
 2. **Build Filters:** **Settings → Build & Deploy → Build Filters → Included Paths** = `Dockerfile`. Sem isso, qualquer push na `main` (até de documentação) reinicia o n8n.
 3. **Conta de dono:** abra https://SEU-SERVICO.onrender.com, crie a conta com **senha forte** e ative a **verificação em duas etapas** (Settings → Personal).
 4. **cron-job.org:** crie a conta, depois **Create cronjob** com URL `https://SEU-SERVICO.onrender.com/healthz`, a cada **5 minutos**, com aviso por e-mail **quando falhar**. Esse aviso é o alarme de "o n8n caiu".
-5. Siga o [`SETUP.md`](../SETUP.md) para credenciais, importação e testes.
+5. Siga o [`SETUP.md`](../docs/SETUP.md) para credenciais, importação e testes.
 
 ## Conferir que está tudo certo
 

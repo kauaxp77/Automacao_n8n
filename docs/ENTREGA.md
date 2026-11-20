@@ -61,10 +61,10 @@ Do celular do responsável, o roteiro do [SETUP, passo 11](SETUP.md#11-testes): 
 
 ## 5. Entregar
 
-- **Guia de uso:** [`docs/apresentacao/guia-do-cliente.pdf`](docs/apresentacao/guia-do-cliente.pdf). Antes de imprimir ou enviar, colocar o número do robô e o contato de suporte (`guia-do-cliente.html`, ver o [LEIA-ME](docs/apresentacao/LEIA-ME.md)).
+- **Guia de uso:** [`docs/apresentacao/guia-do-cliente.pdf`](apresentacao/guia-do-cliente.pdf). Antes de imprimir ou enviar, colocar o número do robô e o contato de suporte (`guia-do-cliente.html`, ver o [LEIA-ME](apresentacao/LEIA-ME.md)).
 - **Formulário de reserva:** o link está no guia. O usuário e a senha (credencial Basic Auth do n8n) vão para o responsável **à parte**, nunca no PDF.
-- **Suporte:** os alertas ("NÃO agendado", "resposta não entregue", "lembretes PARADOS") chegam no e-mail do responsável. Combinar que ele encaminha para o suporte. A rotina semanal do [OPERACAO](docs/OPERACAO.md#rotina-semanal-5-minutos) fica com o desenvolvedor.
-- **Custos:** zero no plano grátis. Render, Supabase e Groq estão no plano grátis, e responder pelo WhatsApp em até 24 horas é grátis. Limites em [OPERACAO](docs/OPERACAO.md#limites-do-plano-grátis).
+- **Suporte:** os alertas ("NÃO agendado", "resposta não entregue", "lembretes PARADOS") chegam no e-mail do responsável. Combinar que ele encaminha para o suporte. A rotina semanal do [OPERACAO](OPERACAO.md#rotina-semanal-5-minutos) fica com o desenvolvedor.
+- **Custos:** zero no plano grátis. Render, Supabase e Groq estão no plano grátis, e responder pelo WhatsApp em até 24 horas é grátis. Limites em [OPERACAO](OPERACAO.md#limites-do-plano-grátis).
 
 ## 6. Depois da entrega
 

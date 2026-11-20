@@ -1,8 +1,8 @@
 # Configuração
 
-Passo a passo para deixar os dois workflows funcionando: WhatsApp, credenciais, importação, celular do responsável e testes. Visão geral do sistema no [README](README.md).
+Passo a passo para deixar os dois workflows funcionando: WhatsApp, credenciais, importação, celular do responsável e testes. Visão geral do sistema no [README](../README.md).
 
-**Pré-requisito:** o n8n no ar com HTTPS em https://SEU-SERVICO.onrender.com, com a conta de dono criada. Veja [`deploy/RENDER.md`](deploy/RENDER.md).
+**Pré-requisito:** o n8n no ar com HTTPS em https://SEU-SERVICO.onrender.com, com a conta de dono criada. Veja [`deploy/RENDER.md`](../deploy/RENDER.md).
 
 | Passo | O quê | Tempo |
 |---|---|---|
@@ -207,4 +207,4 @@ Permite que o Claude veja e rode os workflows do seu n8n, por exemplo para testa
 
 ---
 
-Problemas depois de configurado? Veja [`docs/OPERACAO.md`](docs/OPERACAO.md).
+Problemas depois de configurado? Veja [`docs/OPERACAO.md`](OPERACAO.md).
